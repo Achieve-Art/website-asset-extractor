@@ -1,0 +1,62 @@
+import os
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urljoin
+from zipfile import ZipFile
+
+def download_file(url, folder_path, file_name):
+    response = requests.get(url, stream=True)
+    file_path = os.path.join(folder_path, file_name)
+    with open(file_path, 'wb') as file:
+        for chunk in response.iter_content(chunk_size=8192):
+            file.write(chunk)
+    return file_path
+
+def extract_assets(url, output_folder="assets"):
+    response = requests.get(url)
+    soup = BeautifulSoup(response.content, 'html.parser')
+
+    if not os.path.exists(output_folder):
+        os.makedirs(output_folder)
+
+    asset_urls = []
+
+    # Extract image URLs
+    for img in soup.find_all('img'):
+        img_url = img.get('src')
+        if img_url:
+            full_url = urljoin(url, img_url)
+            asset_urls.append(full_url)
+
+    # Extract video URLs
+    for video in soup.find_all('video'):
+        video_url = video.get('src')
+        if video_url:
+            full_url = urljoin(url, video_url)
+            asset_urls.append(full_url)
+        else:
+            # Check for source tags inside the video tag
+            for source in video.find_all('source'):
+                source_url = source.get('src')
+                if source_url:
+                    full_url = urljoin(url, source_url)
+                    asset_urls.append(full_url)
+
+    for i, asset_url in enumerate(asset_urls):
+        file_name = os.path.basename(asset_url)
+        download_file(asset_url, output_folder, file_name)
+
+    return output_folder
+
+def create_zip(folder_path, zip_name='website_assets.zip'):
+    with ZipFile(zip_name, 'w') as zipf:
+        for root, _, files in os.walk(folder_path):
+            for file in files:
+                zipf.write(os.path.join(root, file), os.path.relpath(os.path.join(root, file), folder_path))
+
+    print(f"Assets have been zipped into {zip_name}")
+
+if __name__ == "__main__":
+    website_url = input("Enter the website URL: ")
+    output_folder = extract_assets(website_url)
+    create_zip(output_folder)
